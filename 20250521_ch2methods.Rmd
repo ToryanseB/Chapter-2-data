@@ -1,0 +1,450 @@
+---
+title: "Chapter 2 Methods"
+author: "Toryanse Blanchard"
+date: '2025-05-21'
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#set seed for reproducible results
+set.seed(123)
+#load libraries
+{library(tidyverse)
+  library(sf)
+  library(sp)
+  library(ggplot2)
+  library(rgbif)
+  library(cooccur)}
+
+#load data
+phen_cooccur<-read.csv("phen_cooccur.csv")
+
+```
+
+## Plant Phenology Methods
+
+#### *Phenology Data from iNaturalist*
+
+Log into iNaturalist. Look up the plant in the explore tab in iNaturalist, filter by 1)location (Alberta), 2)research grade observations, and 3) range from Jan 1 2019 to present day.
+
+*Criteria: the plant must have more than or equal to 30 observations on iNaturalist with the applied filters.*
+
+If the plant fits the above criteria, click download. Select to download the following 7 columns: "id", "time_observed_at", "url", "place_guess", "latitude", "longitude", "scientific_name". Click export. Wait. When the export is ready, click download.
+
+Unzip the file and rename the excel sheet using the following name template: "YEARMONTHDAY_Phenology_scientificname" ex: "20240111_Phenology_Astragalusdrummondii". Make sure you save periodically to OneDrive. 
+
+In the newly named file, make a new column called "month". Copy paste the formula in the sample sheet (Phenology_Mentha canadensis.xlsx) so this column only displays the month number.
+
+Create a new column called "phenology".
+
+Sort by the "year" column A to Z, then "month" column A to Z, and fill in the phenology column for \~3 observations per month per year. Try to get 1 from the first third of the month (days 1-10), 1 from the middle of the month (days 10-20) and 1 from the last third of the month (days 20-31). This way we can see an even estimate of flowering time over the month. This matters more for the summer months when the plants are actually flowering, versus the winter months where their status is either going to be fruiting or no evidence of flowering.
+
+Look up each observation (copy-paste the url into your search engine) and visually assess the photo of that observation to determine if the plant is budding (0.5), flowering (1), in fruit (1.5), or no evidence of flowering (0). TIP: copy the data from the "id" column, and double click the end of the URL on your previous search, press paste. 
+
+Input the correct label (ie. 0.5, 1, 1.5) into the "phenology" column your excel sheet for that plant. 
+
+Update the iNaturalist observation to include the phenology (if it is flowering, budding, fruiting, or not) 
+
+Copy-paste the table in the sample sheet (Phenology_Mentha canadensis.xlsx) into cell M2. Record the value of Peak Flowering Time, Flowering Start, and Flowering End into the final dataset (phenologydat.xlsx).
+
+#### *Phenology Data from Literature*
+
+For those plants that do not fit the criteria of more than 30 observations, I consulted three Alberta plant guides to find their flowering start and end month. For plants whose flowering times had to be determined using literature, I was not able to estimate peak flowering.
+
+## Site Selection Methods
+
+#### *Download Occurrence Data*
+
+Using rgbif, I downloaded GBIF plant occurrence data recorded in Alberta. All analyses on the data were conducted in R 4.4.3. In order to download within Alberta, I simplified a shapefile of the Alberta boundary using MapShaper, and simplified to 2.2%.
+
+#### *Filter Occurrence Data*
+
+After the download was complete and uploaded into R, I filtered the data to ensure that only occurrences within the province of Alberta were included. I also filtered to only include points that had a coordinate uncertainty of less than or equal to 10m. The mode of all observation coordinate uncertainty was \~4m, but I only needed my data to be accurate to 10m. To ensure I was only examining flowering species, I filtered to only include species within the class Magnoliopsida and Liliopsida. In order to only look at recent data, I filtered to only include observations made from 2019 to present. I also filtered to only include observations that were identified to the species level.
+
+#### *Create Buffers*
+
+I created a buffer around each plant observation. Each buffer had a radius of 100m. I chose a radius of 100m because that was the average radius of area that I covered in my plant walks. I tried to do the analysis with a radius of 8m as well because other studies suggested the ideal plot area was 200m squared. However, this radius omitted a large number of observations from my dataset and resulted in a co-occurrence analysis where every relationship was 'positive'.
+
+```         
+oneh_dat <- ab_dat_flowering %>%
+  mutate(
+    original_long = decimalLongitude, #to keep the original lat lon
+    original_lat = decimalLatitude
+  ) %>%
+  st_as_sf(coords = c('decimalLongitude', 'decimalLatitude'), crs = 4326) %>% 
+  st_transform(3400) %>%   
+  st_buffer(dist = 100) %>%  #buffer by 100m radius
+  st_transform(4326)#transform to WGS
+
+# Convert occurrence data (ab_dat_flowering) to sf and ensure same CRS
+ab_points <- ab_dat_flowering %>%
+  st_as_sf(coords = c('decimalLongitude', 'decimalLatitude'), crs = 4326) %>%
+  st_transform(4326) 
+# Use st_intersects() instead of st_within() for better point-in-buffer counting
+oneh_dat$obs_count <- lengths(st_intersects(oneh_dat, ab_points))
+```
+
+#### *Filter Buffers*
+
+I generated a list of species and a total count of species in each buffer and then noted whether or not the buffer contained geranium.
+
+```         
+# Find intersections between buffered areas and occurrence points
+intersections <- st_intersects(oneh_dat, ab_points)
+
+# Extract species names for each buffer
+oneh_dat$listed_species <- sapply(intersections, function(index) {
+  unique(ab_dat_flowering$species[index])  # Extract unique species names
+})
+
+# Convert to a comma-separated string
+oneh_dat$listed_species <- sapply(oneh_dat$listed_species, function(species_list) {
+  paste(species_list, collapse = ", ")
+})
+
+# Create a column to indicate presence of "Geranium viscosissimum"
+oneh_dat$geranium_present <- sapply(intersections, function(index) {
+  if ("Geranium viscosissimum" %in% ab_dat_flowering$species[index]) {
+    return(1)  # Present
+  } else {
+    return(0)  # Not present
+  }
+})
+```
+
+To determine the thresholds for the amount of species I wanted in each buffer, I looked at the number of species in buffers that occurred within the area of my plant walks. For each of the 4 plant walk sites, I then recorded the buffers that had the maximum number of species. I then took the lowest maximum of the four locations and deemed that as my minimum threshold. The reason I took the lowest maximum was to ensure that data recorded during my plant walks was included in the analysis. I took the highest maximum of the four locations and deemed that as my maximum threshold. I chose this so that I would have relatively similar 'effort' for each buffer.
+
+I filtered to only include buffers that took place south of the northernmost latitude coordinate where *Geranium viscosissimum* was observed. This is to keep the non-geranium buffers in a place where
+
+I filtered the buffers to only include those that fit the threshold criteria for amount of species per buffer.
+
+```         
+#filter to only include those points that have more than 44 observations
+onehdat_filtered <- oneh_dat %>%
+  select(id, obs_count, occurrenceID, phylum, class, order,family, genus, species, coordinateUncertaintyInMeters, eventDate, day, month, year, basisOfRecord, institutionCode, identifiedBy, listed_species, geranium_present, geometry, plantwalk) %>%
+  filter(obs_count >= 44, obs_count<=106) %>% 
+  mutate(
+    centroid_lat = st_coordinates(st_centroid(geometry))[, 2]  # Extract latitude of centroid
+  ) %>%
+  filter(centroid_lat <= 52.87396)  # Keep only buffers with latitude <= 52.87396
+```
+
+#### *Even Rare Plant Buffers with Non-Rare Plant Buffers*
+
+I recorded the amount of buffers that contained *Geranium viscosissimum* and randomly selected an equal number of buffers from those that did not contain *G. viscosissimum*. The reason I evened them was to make the next step less computationally taxing and to try and ensure that the maximum number of sites with *G. viscosissimum* were included.
+
+```         
+# Filter out buffers that contain "Geranium viscosissimum"
+non_geranium_buffers <- onehdat_filtered %>%
+  filter(geranium_present == 0)
+
+# Randomly sample 618 points from the remaining data
+set.seed(123)  # Set seed for reproducibility
+random_non_geranium_buffers <- non_geranium_buffers %>%
+  sample_n(618)
+
+# Filter for buffers that contain "Geranium viscosissimum"
+geranium_buffers <- onehdat_filtered %>%
+  filter(geranium_present == 1)
+
+# The previously selected buffers that do not contain Geranium viscosissimum
+# (Already stored in random_non_geranium_buffers)
+# Combine the two datasets: buffers that contain Geranium viscosissimum and the random non-Geranium buffers
+onehdat_buffers <- bind_rows(
+  geranium_buffers,  # Buffers with Geranium viscosissimum
+  random_non_geranium_buffers  # Randomly selected buffers without Geranium viscosissimum
+)
+```
+
+#### *Remove Overlapping Buffers*
+
+In order to avoid analyzing the same grouping of species more than once and thus biasing the co-occurrence analysis, I removed buffers that overlapped with one another. I did this by first ensuring to remove buffers where their central lat-lon was the same. I then ran an algorithm to determine how many buffers each buffer overlaps with and removing the site with the most overlap first, then stopping once sites no longer overlap with one another. This algorithm was created by Dr. Samuel Robinson.
+
+```         
+# Compute centroids
+onehdat_buffers <- onehdat_buffers %>%
+  mutate(centroid = st_centroid(geometry))
+
+# Remove exact centroid duplicates
+onehdat_buffers <- onehdat_buffers %>%
+  group_by(centroid = st_as_text(centroid)) %>%
+  slice(1) %>% #keep only the first occurrence in each group
+  ungroup()
+
+onehdat_buffers_reduced <- onehdat_buffers
+keepGoing <- TRUE
+
+while(keepGoing){
+  siteOver <- st_overlaps(onehdat_buffers_reduced,sparse = TRUE) #Gets overlap indices between sites
+  ovlpNum <- sapply(siteOver,length) #How many sites does each site overlap?
+  if(!any(ovlpNum>0)){ #If all are zero
+    keepGoing <- FALSE #Stops the while loop
+  } else { #otherwise
+    chooseMe <- which.max(ovlpNum) #Chooses the first site that has maximum overlap with other sites
+    onehdat_buffers_reduced <- onehdat_buffers_reduced[-chooseMe,] #Removes that site from the dataset
+  }
+}
+```
+
+These non-overlapping buffers became my final sites, with 82 sites (12 with *G. viscosissimum* and 70 without) and 488 recorded species.
+
+For *A. viridiflora* sites, I had 18 sites with *A. viridiflora* present and 30 sites with *A. viridiflora* absent with a total of 86 recorded species.
+
+```         
+abdat_observations<-ab_dat %>% 
+  filter(year>=2019) %>% #make sure the observations are filtered by year
+  filter(class %in% flowering$class) %>% 
+  select(-id)#remove the id column, because you don't need it
+
+
+# Convert occurrence data to sf
+ab_observations <- abdat_observations %>%
+  st_as_sf(coords = c('decimalLongitude', 'decimalLatitude'), crs = 4326) %>%
+  st_transform(st_crs(onehdat_final))  # Ensure same CRS
+
+
+# Ensure onehdat_final is an sf object
+onehdat_final <- st_as_sf(onehdat_final)
+
+# Spatial join: Assign polygon ID to overlapping observations
+onehdat_overlap <- st_join(ab_observations, onehdat_final["id"], left = FALSE)
+```
+
+#### *Create Presence-Absence Matrix*
+
+I re-assigned the occurrence data to each site and assigned the buffer ID to each observation that occurred within that site. I then counted the occurrences of each species at each site. I transformed this data into presence-absence data by turning occurrence numbers greater than or equal to 1 to 1, and keeping 0 values at 0. I then reshaped the data to have species as row values and sites as column headers. This matrix was then used for the next step in analysis: co-occurrence analysis.
+
+```         
+onehdat_pa <- onehdat_overlap %>%
+  rename(site = id) %>%
+  select(species, site) %>%
+  filter(species != "" & !is.na(species)) %>%  # Remove blank or NA species
+  mutate(site = paste0("site", site)) %>%  # Add "site" prefix to site numbers
+  st_drop_geometry()  # Removes the geometry and converts it into a standard dataframe
+
+# Transform into correct Presence-Absence for Analysis --------------------
+
+# Count the occurrences of each species at each site
+onehdat_pa_counts <- onehdat_pa %>%
+  count(species, site)
+
+# Transform the 'n' column: set values to 1 if greater than 0
+onehdat_pa_counts <- onehdat_pa_counts %>%
+  mutate(n = ifelse(n > 0, 1, 0))  # Change n to 1 if greater than 0, else 0
+
+# Reshape the data to have species as rows and sites as columns
+onehdat_matrix <- onehdat_pa_counts %>%
+  pivot_wider(names_from = site, values_from = n, values_fill = 0)
+```
+
+## Co-occurrence Analysis
+
+```{r load matrix, include=FALSE}
+onehmdat_matrix<-read.csv("onehdat_geranium.csv")
+
+#make sure species is a factor
+onehm_gdat<-onehmdat_matrix %>% 
+  mutate(species = as.factor(species)) 
+
+# Convert to data frame first, then use column_to_rownames
+onehm_gdat <- as.data.frame(onehm_gdat) %>%
+  column_to_rownames("species")
+```
+
+I used the package cooccur to do a pairwise co-occurrence analysis on my sites.
+
+```         
+cooccur.onehmgdat <- cooccur(mat=onehm_gdat,
+                             type="spp_site",
+                             thresh=TRUE,
+                             spp_names=TRUE)
+```
+
+```         
+plot(cooccur.onehmgdat)
+
+#to see significant pairs with Geranium viscosissimum
+pair(mod=cooccur.onehmgdat, "Geranium viscosissimum")
+```
+
+Some species names were outdated, so I used flowering data collected previously for their updated names (*Alyssum turkestanicum*= *Alyssum desertorum*; *Pelecyphora vivipara*=*Escobaria vivipara*; *Cotoneaster acutifolius* = *Cotoneaster lucidus*)
+
+I extracted the significant species associations and combined that with the effect sizes. I standardized effect sizes so that effect sizes would be bound within -1 and 1, with values closer to -1 indicating negative co-occurrence, values closer to 1 indicating positive co-occurrence, and values closer to zero indicating more random co-occurrence.
+
+I then combined this data with phenology data aquired from iNaturalist and plant guides. I calculated flowering overlap and flowering synchrony. Flowering overlap represents the number of months when two species flower at the same time. Flowering synchrony considers flowering overlap along with how long each species was in flower, to determine how synchronous their flowering is. This calculation came from Bizecki Robson (2013).
+
+```         
+print_onehm<-print(cooccur.onehmgdat)#gives you only the significant species combinations
+effects.onehmgdat<-effect.sizes(cooccur.onehmgdat, standardized = TRUE)
+
+onehm_final_dat <- print_onehm %>%
+  left_join(effects.onehmgdat %>% rename(sp1_name = sp1, sp2_name = sp2), 
+            by = c("sp1_name", "sp2_name")) %>% 
+  mutate(quality = case_when(
+    p_lt < 0.05 ~ "negative",
+    p_gt < 0.05 ~ "positive",
+    TRUE ~ "random"
+  ))
+
+phen_cooccur <- onehm_final_dat %>%
+  # Join sp1 flowering data
+  left_join(phen_dat %>% select(sp1_name, start_flowering, end_flowering, flowering_length), by = "sp1_name") %>%
+  rename(sp1_start_flowering = start_flowering, 
+         sp1_end_flowering = end_flowering,
+         sp1_flowering_length = flowering_length) %>%
+  
+  # Join sp2 flowering data
+  left_join(phen_dat %>% select(sp2_name = sp1_name, start_flowering, end_flowering, flowering_length), by = "sp2_name") %>%
+  rename(sp2_start_flowering = start_flowering, 
+         sp2_end_flowering = end_flowering,
+         sp2_flowering_length = flowering_length) %>%
+  
+  # Add flowering overlap and synchrony
+  mutate(
+    # Convert relevant columns to numeric
+    across(c(sp1_start_flowering, sp1_end_flowering, 
+             sp2_start_flowering, sp2_end_flowering, 
+             sp1_flowering_length, sp2_flowering_length), as.numeric),
+    
+    # Calculate flowering overlap
+    flowering_overlap = pmax(0, pmin(sp1_end_flowering, sp2_end_flowering) - pmax(sp1_start_flowering, sp2_start_flowering) + 1),
+    
+    # Calculate flowering synchrony for f sp1 (x = (1/f) * e)
+    flowering_synchrony_sp1 = (1 / sp1_flowering_length) * flowering_overlap,
+    
+    # Calculate flowering synchrony for f sp2 (x = (1/f) * e)
+    flowering_synchrony_sp2 = (1 / sp2_flowering_length) * flowering_overlap
+  )
+```
+
+## Modelling
+
+As a start, I attempted to model the relationship between flowering overlap (discrete variable) and effect size (discrete variable) as a linear relationship using lm(). The effect of flowering overlap appeared as significant, however, the model resulted in skewed residuals, indicating that the data does not follow a normal distribution.
+
+```{r linear model}
+mod1<- lm(effects~flowering_overlap, data=phen_cooccur)
+summary(mod1)#quick summary of the model
+
+#plot to see the model visually
+ggplot(phen_cooccur,aes(flowering_overlap, effects))+geom_point()+geom_smooth(method='lm',se=TRUE,formula=y~x,col='orange')+
+  theme(plot.margin = unit(c(0.1,0.1,0,0.1),'cm'))
+
+#residual checks
+plot(mod1, which=1)#should appear with no pattern, shotgun blast
+plot(mod1, which=2)#should roughly fit the 1:1 line, which it does not. it looks like an S
+
+```
+
+I then attempted to look at what kind of distribution the data had at each level of flowering overlap. I plotted their frequency distributions.
+
+I wonder if it would be better to try and model a mixed effects model and wait until I have data on number of shared pollinators.
+
+## Plant-Pollinator Interaction Methods
+
+#### *Pollinator Interaction Data from Calgary Pollinators Project*
+
+Log into iNaturalist. Locate the Calgary Pollinators Project. Select download, and make sure to select to download "field interaction-visited flower of".
+
+#### *Pollinator Interaction Data from Global Biotic Interactions*
+
+Using rglobi, download flowersVisitedBy interactions for each of the plant species that were found significantly associated. Transform into usable format. For each interaction, define what taxonomic level the target taxon (visiting insect) could be identified to. For each of the insects that cannot be defined based on taxonomic conventions, look up manually. Clean up the data and remove entries that are undefined.
+
+```         
+# 1. Safely call get_interactions() for each species
+interaction_nobox <- map(unique_species$species, function(sp) {
+  tryCatch({
+    df <- get_interactions(
+      sp,
+      interaction.type = "flowersVisitedBy",
+      returnobservations = TRUE
+    )
+    
+    # Ensure it's a non-empty dataframe with rows
+    if (is.data.frame(df) && nrow(df) > 0) {
+      df$species <- sp  # Optionally tag original species
+      return(df)
+    } else {
+      return(NULL)
+    }
+  }, error = function(e) {
+    message(paste("No data for:", sp))
+    return(NULL)
+  }, warning = function(w) {
+    message("Warning for species: ", sp, " - ", conditionMessage(w))
+    return(NULL)  # or return some default value
+  })
+})
+
+# 2. Remove NULLs and bind rows
+interaction_nobox_all <- interaction_nobox %>%
+  compact() %>%     # Removes NULL entries
+  bind_rows()
+```
+
+```         
+#first assign what we can based on taxonomic conventions
+globi_data_all_named<-globi_data_all %>% 
+  mutate(
+    target_taxon = case_when(
+      # Two-word name with "sp." where the first word ends in a taxonomic suffix
+      str_detect(target_taxon_name, "^\\w+idae sp\\.$") ~ "family",
+      str_detect(target_taxon_name, "^\\w+inae sp\\.$") ~ "subfamily",
+      str_detect(target_taxon_name, "^\\w+tera sp\\.$") ~ "order",
+      str_detect(target_taxon_name, "^\\w+idea sp\\.$") ~ "superfamily",
+      
+      # Regular two-word species name (not ending in sp.)
+      str_detect(target_taxon_name, "^\\w+ \\w+$") & !str_detect(target_taxon_name, " sp\\.$") ~ "species",
+      
+      # One-word name classifications
+      str_detect(target_taxon_name, "idae$") ~ "family",
+      str_detect(target_taxon_name, "inae$") ~ "subfamily",
+      str_detect(target_taxon_name, "tera$") ~ "order",
+      str_detect(target_taxon_name, "idea$") ~ "superfamily",
+      
+      TRUE ~ NA_character_
+    )
+  )
+
+#remove items in target_taxon_name where the entry starts with "Unidentified"
+#when the item is one word and ends in a number, remove the number
+globi_data_filtered <- globi_data_all_knownname %>%
+  distinct(target_taxon_name, .keep_all = TRUE) %>%
+  
+  # Remove entries starting with "Unidentified"
+  filter(!str_starts(target_taxon_name, "Unidentified")) %>%
+  
+  # Trim whitespace
+  mutate(target_taxon_name = str_trim(target_taxon_name)) %>%
+  
+  # Remove trailing numbers on single-word names
+  mutate(
+    target_taxon_name = if_else(
+      !str_detect(target_taxon_name, "\\s") & str_detect(target_taxon_name, "\\d+$"),
+      str_replace(target_taxon_name, "\\d+$", ""),
+      target_taxon_name
+    )
+  ) %>%
+  
+  # Remove "sp." or "spp." at end of single-word names
+  mutate(
+    target_taxon_name = if_else(
+      !str_detect(target_taxon_name, "\\s") & str_detect(target_taxon_name, "(?i)(spp\\.|sp\\.)$"),
+      str_replace(target_taxon_name, "(?i)(spp\\.|sp\\.)$", ""),
+      target_taxon_name
+    )
+  )
+```
+
+#### *Pollinator Interaction Data from Literature*
+
+For those species that cannot be found in either the Calgary Pollinators Project download, or the globi download, we searched the literature for evidence of insect interactions. We used a systematic approach, searching in the University of Calgary library, Google Scholar, and general Google search with the following Boolean search terms for each: "*species*" AND interact\* *, "species" AND* pollin, "species" AND insect OR visit\**, "species" AND* flowers OR visit\*. We only included results that included a organism that was an insect and that could potentially pollinate another plant.
+
+After searching, we still could not find interaction data for five species: *Artemisia longifolia, Atriplex gardneri, Carex aurea, Carex filifolia,* and *Paronychia sessiliflora.*
+
+The interaction data for three more species could not be identified to the genus level (nor the species-level): *Artemisia ludoviciana, Krascheninnikovia lanata,* and *Oreocarya glomerata*.
+
+## Works Cited
