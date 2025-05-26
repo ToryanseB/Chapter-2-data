@@ -1,0 +1,53 @@
+phen_cooccur_milkweed.csv
+
+the results from the print function in cooccur with effects and phenology data, including flowering synchrony and overlap calculated.
+
+tenm_final_dat.csv
+
+the results from print function in cooccur with effects
+
+20250506_milkweed10m_site_env.RData
+
+environment RData for your milkweed site selection code.
+
+20250506_milkweed10m_siteselection.R
+
+code for milkweed site selection
+
+tenmdat_asclepias.csv
+
+the co-occurrence matrix for milkweed data, with a list of all the species that were included in the analysis
+
+tenmdat_seeable.csv
+
+use this point data for nice visualization in maps showing where the 10m site buffers are. They have labels for whether they include milkweed or not.
+
+tenmdat_final_buffer.dbf
+
+tenmdat_final_buffer.prj
+
+tenmdat_final_buffer.shp
+
+tenmdat_final_buffer.shx
+
+the above 4 files must be used together. shapefile for the milkweed 10m site buffers.
+
+ab_dat_flowering_m.csv
+
+all the flowering plant occurrence data in the milkweed boundary used to create initial buffers
+
+20250506_Gbif_download.R
+
+original download to get ab_dat data, which is all the plant occurrences in alberta
+
+20250506_cooccur_milkweed10m_env.RData
+
+environment for cooccurrence analysis with milkweed matrix
+
+20250506_cooccur_milkweed10m.R
+
+cooccurrence analysis with milkweed matrix
+
+unique_tenm.csv
+
+all the species from the milkweed matrix that had significant associations
