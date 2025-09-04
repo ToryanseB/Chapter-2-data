@@ -1,0 +1,123 @@
+---
+title: "Model_cooccurrence_pollination"
+author: "Toryanse Blanchard"
+date: '2025-07-28'
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+#set working directory
+setwd("~/R/R_UCThesis_Rare_Plants_Alberta/Site download Feb 2025")
+#load libraries
+library(tidyverse)
+library(mgcv)
+library(gratia)
+library(MASS)
+```
+
+## Modelling Effects with Phenology and Shared Pollinators
+
+### GAM Approach
+
+### Standardizing Shared Visitors
+
+To account for unequal sampling effort finding shared visitors between plant species pairs, I standardized the count of shared visitor genera using a residual-based approach. I calculated a sampling effort metric for each species pair by adding the number of observation records for each species (i.e., sp1_records + sp2_records). I added a 1 to avoid undefined values when log-transforming. I then modeled the raw count of shared pollinator genera (shared_genus_visitor_count) as a function of log-transformed sampling effort using a Poisson generalized linear model (GLM). Because the Poisson model showed evidence of over dispersion (dispersion statistic ≈ 1.96), I refit the model using a negative binomial GLM, which was not over dispersed. The pearson residuals from this final model represent the deviation between observed and expected shared visitor counts given the sampling effort and serve as the standardized measure of shared visitors. Positive values indicate more shared visitors than expected based on sampling effort and negative values indicate fewer than expected.
+
+```
+cooccur_model_df <- cooccur_traits_ger %>%
+  mutate(log_effort_product = log(sp1_records * sp2_records + 1))  # +1 avoids log(0)
+  
+  #start with poisson glm
+poisson_model <- glm(
+  shared_genus_visitor_count ~ log_effort_product,
+  data = cooccur_model_df,
+  family = poisson()
+)
+
+#check for overdispersion
+dispersion <- sum(residuals(poisson_model, type = "pearson")^2) / df.residual(poisson_model)
+print(dispersion)  # 1.963365>1.5 = likely overdispersed
+
+#Because it's overdispersed, switch to a negative binomial model:
+nb_model <- glm.nb(
+  shared_genus_visitor_count ~ log_effort_product,
+  data = cooccur_model_df
+)
+#check for dispersion
+dispersion <- sum(residuals(nb_model, type = "pearson")^2) / df.residual(nb_model)
+print(dispersion)# not overdispersed
+
+# Find the rows actually used in the model (no missing data)
+used_rows <- as.numeric(rownames(nb_model$model))
+
+# Create a vector of NA of full length
+residuals_full <- rep(NA, nrow(cooccur_model_df))
+
+# Assign residuals to the used rows
+residuals_full[used_rows] <- residuals(nb_model, type = "pearson")
+
+# Add to dataframe
+cooccur_model_df$standardized_shared_visitors <- residuals_full
+```
+
+```{r load data, echo=TRUE}
+#load data
+cooccur_traits_ger<-read.csv("cooccur_traits_ger.csv")
+#filter for only those columns you need for modelling
+model_data <- cooccur_traits_ger %>%
+  filter(abundance_sp1 != "unknown", abundance_sp2 != "unknown") %>% #remove those species who's abundances are unknown
+  mutate(f_abundance_combination = as.factor(abundance_combination)) %>% #transform abundance combo to a factor
+  dplyr::select(effects, quality, flowering_overlap, flowering_synchrony, standardized_shared_visitors, f_abundance_combination) %>%
+  drop_na()
+
+# Estimate group-wise residual variances from a prior model or exploratory step:
+group_var <- tapply(model_data$effects, model_data$f_abundance_combination, var)
+
+# Assign weights: inverse of variance
+model_data$weights_var <- 1 / group_var[model_data$f_abundance_combination]
+
+# Fit GAM with weights
+M6 <- gam(effects ~ f_abundance_combination +
+            s(flowering_overlap, by = f_abundance_combination, bs = "cr") +
+            s(standardized_shared_visitors, by = f_abundance_combination, bs = "cr"),
+          data = model_data,
+          weights = weights_var,
+          method = "REML")
+summary(M6)
+AIC(M6)#-33299.59 much better than models without weights or interaction terms. 
+```
+
+```{r check gam}
+gam.check(M6)
+```
+
+### Results
+
+Based on AIC values and results from gam.check(), the model with a weighted variance structure based on shared abundance, and interaction terms between abundance and flowering overlap, and abundance and shared visitors fit the best. The Q-Q plot shows some mild deviations at the tails, suggesting the residuals are not perfectly normal. The histogram of residuals is skewed slightly right, meaning there are some unusually high effects. In the plot of residuals versus linear predictor and fitted values there is no clear funneling or structure, indicating the model is fairly homoscedastic.
+
+The model explained 4.83% of the deviance, which is a low amount of explanatory power. The adjusted R squared at 0.045 also reflects the low explanatory power. This could be because the values in the response variable, effects, have a lot of noise. This could also indicate that more explanatory variables are needed to account for the variation.
+
+On average, pairings of common and rare plants have 0.0199 lower effect sizes (less positive associations) compared to those that have common-common pairings. On average, pairings of rare and rare plants have 0.0162 lower effect sizes compared to common-common pairings.
+
+```{r plot}
+draw(M6)
+```
+
+##### Flowering Overlap
+
+In common-common pairings, flowering overlap had a significant nonlinear relationship with effects (p=0.0026). Pairings of common and rare species had stronger nonlinear relationships (p\<0.001). Rare-rare pairings had no strong signal, meaning the smoother was not significant (p=0.34).
+
+In common-common pairings, effects increased non-linearly with increased flowering overlap. This came with a peak in effects around 3 months flowering overlap. The increase in flowering overlap mirrored a change in effects from a negative relationship to a positive relationship.
+
+In common-rare pairings, effects decreased non-linearly with increased flowering overlap. The increase in flowering overlap mirrored a change in effects from a positive to a negative relationship.
+
+##### Shared Visitors
+
+In common-common pairings, standardized shared visitors showed no significant pattern in relation to effects (p=0.25). Pairings of common and rare species had a strong non-linear pattern (p\<0.0001). Pairings of rare and rare species also had a strong nonlinear pattern (p\<0.0001).
+
+In common-rare pairings, effects increased non-linearly with increased standardized shared visitors, with the most change in effects between standardized shared visitor values of 2 and 4. Effects increased from positive pairings to more strongly positive pairings with an increase in standardized shared visitors.
+
+In rare-rare pairings, effects increased non-linearly with increased shared visitors. The effects increased from a effect indicating a random relationship to an effect indicating more positive relationship.
