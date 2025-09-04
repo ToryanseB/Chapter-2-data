@@ -247,6 +247,7 @@ Vaccinium cespitosum,Vaccinium cespitosum,6,6,7,6,1
 Euphorbia virgata,Euphorbia virgata,6,5,10,9,5
 Astragalus aboriginum,Astragalus aboriginum,NA,NA,NA,#VALUE!,#VALUE!
 Astragalus laxmannii robustior,Astragalus laxmannii robustior,7,5,10,9,5
+Astragalus tenellus,Astragalus tennelus,6,5,8,7,3
 Astragalus multiflorus,Astragalus multiflorus,6,5,8,7,3
 Caragana pygmaea,Caragana pygmaea,6,5,7,6,2
 Hedysarum americanum,Hedysarum americanum,NA,NA,NA,#VALUE!,#VALUE!
@@ -946,7 +947,6 @@ Melica spectabilis,Melica spectabilis,NA,NA,NA,#VALUE!,#VALUE!
 Melica subulata,Melica subulata,NA,7,8,7,1
 Muhlenbergia cuspidata,Muhlenbergia cuspidata,NA,NA,NA,#VALUE!,#VALUE!
 Muhlenbergia racemosa,Muhlenbergia racemosa,NA,NA,NA,#VALUE!,#VALUE!
-Nassella viridula,Nassella viridula,NA,NA,NA,#VALUE!,#VALUE!
 Oryzopsis asperifolia,Oryzopsis asperifolia,NA,5,7,6,2
 Phalaris arundinacea,Phalaris arundinacea,7,5,11,10,6
 Poa cusickii,Poa cusickii,NA,NA,NA,#VALUE!,#VALUE!
@@ -1140,3 +1140,9 @@ Maianthemum canadense,Maianthemum canadense,NA,6,8,7,2
 Perideridia gairdneri,Perideridia gairdneri,7,7,8,7,1
 Krascheninnikovia lanata,Krascheninnikovia lanata,6,5,8,9,4
 Atriplex gardneri,Atriplex gardneri,6,5,9,8,4
+Dieteria canescens,Dieteria canescens,9,6,11,10,5
+Lomatium foeniculaceum,Lomatium foeniculaceum,5,4,7,6,3
+Salix barrattiana,Salix barrattiana,6,5,8,7,3
+Sarcobatus vermiculatus,Sarcobatus vermiculatus,7,6,8,7,2
+Eriocoma hymenoides,Eriocoma hymenoides,6,5,7,6,2
+Nassella viridula,Nassella viridula,6,5,8,7,3
